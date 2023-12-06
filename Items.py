@@ -55,4 +55,3 @@ class BigDots:
             )
         if self.frame_count > 90:
             self.frame_count = 0
-

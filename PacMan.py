@@ -8,7 +8,7 @@ class Character:
         self.color = color
         self.x = x
         self.y = y
-        self.spacesAllowed = (0,3,4)
+        self.spacesAllowed = Constants.CHARACTER_SPACES
         self.gridx = self.x // Constants.TILESIZE
         self.gridy = self.y // Constants.TILESIZE
         self.desired_direction = [0, 0]
@@ -26,11 +26,11 @@ class Character:
             and ((self.y + Constants.TILESIZE) < tile_bottom + 2)
         )
 
-    def would_collide(self, board, direction):
+    def would_collide(self, board):
         gridx = self.x // Constants.TILESIZE
         gridy = self.y // Constants.TILESIZE
         if self.fully_inside_square(gridx, gridy):
-            if board.boardGrid[gridx + self.current_direction[0]][gridy + self.current_direction[1]] not in (0, 3, 4):
+            if board.boardGrid[gridx + self.current_direction[0]][gridy + self.current_direction[1]] not in Constants.CHARACTER_SPACES:
                 return True
         return False
 
@@ -41,11 +41,19 @@ class Character:
             if board.boardGrid[gridx + self.desired_direction[0]][gridy + self.desired_direction[1]] in self.spacesAllowed:
                 self.current_direction = self.desired_direction.copy()
 
+            elif board.boardGrid[gridx + self.current_direction[0]][gridy + self.current_direction[1]] == Constants.LEFT_PORTAL:
+                self.x = (Constants.RIGHT_PORTAL_POSITION[0] - 1) * Constants.TILESIZE
+                gridx = self.x // Constants.TILESIZE
+
+            elif board.boardGrid[gridx + self.current_direction[0]][gridy + self.current_direction[1]] == Constants.RIGHT_PORTAL:
+                self.x = (Constants.LEFT_PORTAL_POSITION[0] + 1) * Constants.TILESIZE
+                gridx = self.x // Constants.TILESIZE
+
         if not self.fully_inside_square(gridx, gridy):
             self.x += self.current_direction[0]
             self.y += self.current_direction[1]
 
-        if board.boardGrid[gridx + self.current_direction[0]][gridy + self.current_direction[1]] in (0, 3, 4):
+        if board.boardGrid[gridx + self.current_direction[0]][gridy + self.current_direction[1]] in Constants.CHARACTER_SPACES:
             self.x += self.current_direction[0]
             self.y += self.current_direction[1]
 
@@ -83,7 +91,7 @@ class Ghost(Character):
 
     def __init__(self, x, y,color, timer, ghost_number):
         super().__init__(x, y, color)
-        self.spacesAllowed = (0,3,4,6,5,7,8)
+        self.spacesAllowed = Constants.GHOST_SPACES
         self.state = "ghost_house"
         self.mood = "chase"
         self.ghost_number = ghost_number
@@ -110,6 +118,10 @@ class Ghost(Character):
         player_position = (board.player.gridx, board.player.gridy)
         ghost_position = (self.gridx, self.gridy)
         mood = board.mood
+        if(player_position == ghost_position) and mood == "fright" and self.state != "ghost_house":
+            board.score += 200
+            self.state = "ghost_house"
+            self.state_info = {"timer":5*Constants.FRAME_RATE}
         #if self.state != "move":
             #print(self.state, self.state_info, self.current_direction, ghost_position)
         if self.state == "intersection":
@@ -170,11 +182,10 @@ class Ghost(Character):
                     targetSpot = Constants.BLUE_TARGET
                 elif(self.ghost_number == Constants.YELLOW):
                     targetSpot = Constants.YELLOW_TARGET
+                    
             elif mood == "fright":
                 targetSpot = player_position
                 d = -math.inf
-
-
 
             for neighbor in self.get_neighbors(ghost_position, board):
                 if mood == "fright":
@@ -202,8 +213,6 @@ class Ghost(Character):
             self.x = self.startx
             self.y = self.starty
             if self.state_info["timer"] <= 0:
-                #self.x = 10 * Constants.TILESIZE
-                #self.y = 8 * Constants.TILESIZE
                 self.state = "intersection"
                 self.state_info = {}
             else:
@@ -213,12 +222,20 @@ class Ghost(Character):
             if self.fully_inside_square(self.gridx, self.gridy) and len(self.get_neighbors(ghost_position, board)) > 2 and ghost_position != self.state_info["started"]:
                 self.state = "intersection"
                 self.state_info = {}
-            elif not self.would_collide(board, self.current_direction):
-                #print("free to move")
-                self.x += self.current_direction[0]
-                self.y += self.current_direction[1]
-                self.gridx = self.x // Constants.TILESIZE
-                self.gridy = self.y // Constants.TILESIZE
+            elif not self.would_collide(board):
+                if board.boardGrid[self.gridx + self.current_direction[0]][self.gridy + self.current_direction[1]] == Constants.LEFT_PORTAL:
+                    self.x = (Constants.RIGHT_PORTAL_POSITION[0] - 1) * Constants.TILESIZE
+                    self.gridx = self.x // Constants.TILESIZE
+
+                elif board.boardGrid[self.gridx + self.current_direction[0]][self.gridy + self.current_direction[1]] == Constants.RIGHT_PORTAL:
+                    self.x = (Constants.LEFT_PORTAL_POSITION[0] + 1) * Constants.TILESIZE
+                    self.gridx = self.x // Constants.TILESIZE
+                else:
+                    #print("free to move")
+                    self.x += self.current_direction[0]
+                    self.y += self.current_direction[1]
+                    self.gridx = self.x // Constants.TILESIZE
+                    self.gridy = self.y // Constants.TILESIZE
             else:
                 
                 previous_tile = (ghost_position[0]-self.current_direction[0], ghost_position[1]-self.current_direction[1])
@@ -235,8 +252,25 @@ class Ghost(Character):
 
 
 
-    def update(self, board):
-        self.update_direction(board)
-        super().update_position(board)
-
+    def draw(self, screen, board):
+        if(board.mood == "fright"):
+            pygame.draw.circle(
+                screen,
+                (25,25,255),
+                (
+                    self.x + Constants.TILESIZE - Constants.TILESIZE / 2,
+                    self.y + Constants.TILESIZE - Constants.TILESIZE / 2,
+                ),
+                Constants.TILESIZE / 2,
+            )
+        else:
+            pygame.draw.circle(
+                screen,
+                self.color,
+                (
+                    self.x + Constants.TILESIZE - Constants.TILESIZE / 2,
+                    self.y + Constants.TILESIZE - Constants.TILESIZE / 2,
+                ),
+                Constants.TILESIZE / 2,
+            )
    

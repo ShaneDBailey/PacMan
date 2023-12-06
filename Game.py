@@ -13,6 +13,7 @@ import PacMan
 class Board:
 
     def __init__(self):
+        self.font = pygame.font.Font(None, 42)
         self.colors = numpy.array([[0, 0, 0],[100, 100, 255],[255, 255, 255]])
         self.dots = {}
         self.ghosts = {}
@@ -20,7 +21,9 @@ class Board:
         self.timer = 0
         self.rounds = 0
         self.frightTimer = 0
-        #set dots as a dictionary with maps of (x,y), instance.dot so when pacman is over .del
+        self.pacman_start = None
+        self.lives = 3
+        self.score = 0
         with open('PacManBoard.json', 'r') as file:
             array = json.load(file)
 
@@ -41,6 +44,7 @@ class Board:
                 elif cell == Constants.WALLS:
                     self.surface.blit(square, (x*Constants.TILESIZE, y*Constants.TILESIZE))
                 elif cell == Constants.PACMAN:
+                    self.pacman_start = (x, y)
                     self.player = PacMan.Pacman(x*Constants.TILESIZE,y*Constants.TILESIZE)
                 elif cell == Constants.RED:
                     self.ghosts[Constants.RED] = PacMan.Ghost(x*Constants.TILESIZE, y*Constants.TILESIZE,(255,0,0), 3, Constants.RED)
@@ -51,19 +55,42 @@ class Board:
                 elif cell == Constants.YELLOW:
                     self.ghosts[Constants.YELLOW] = PacMan.Ghost(x*Constants.TILESIZE, y*Constants.TILESIZE,(255,255,0), 21, Constants.YELLOW)
 
+        assert self.pacman_start is not None
+
     def drawBoard(self):
         pass
     
     def drawDots(self, screen):
-        for dot_coord, dot_instance in self.dots.items():
+        for dot_instance in self.dots.values():
             dot_instance.draw(screen)
 
-    def deleteDot(self, x, y):
-        dot_coord = (x, y)
+    def deleteDot(self):
+        dot_coord = (self.player.gridx, self.player.gridy)
         if dot_coord in self.dots:
+            self.score += 10
             if isinstance(self.dots[dot_coord], Items.BigDots):
+                self.score += 40
                 self.mood = "fright"
             del self.dots[dot_coord]
+
+    def pacman_ghost_collison(self):
+        collided = False
+        for ghost in self.ghosts.values():
+            if ghost.gridx == self.player.gridx and ghost.gridy == self.player.gridy:
+                collided = True
+                break
+            
+        if collided:
+            self.player.x = self.pacman_start[0] * Constants.TILESIZE
+            self.player.y = self.pacman_start[1] * Constants.TILESIZE
+            self.player.current_direction = (0,1)
+            self.player.desired_direction = (0,1)
+            self.lives -= 1
+            for ghost in self.ghosts.values():
+                ghost.state = "ghost_house"
+                ghost.state_info = {"timer":3*Constants.FRAME_RATE}
+                
+        
 
     def update(self):
         if self.mood == "fright" and self.frightTimer < 10 * Constants.FRAME_RATE:
@@ -83,12 +110,22 @@ class Board:
                 self.timer = 0
                 self.rounds += 1
 
+    def draw_score_and_life(self, screen):
+        score = self.font.render("Score: " + str(self.score), False, (255,255,255))
+        lives = self.font.render("Lives: " + str(self.lives), False, (255,255,255))
+        lives_rect = lives.get_rect()
+        lives_rect.right = Constants.BOARD_WIDTH
+        lives_rect.top = 0
+        screen.blit(score, (0,0))
+        screen.blit(lives, lives_rect.topleft)
+
 
 
  
 
 def main():
     pygame.init()
+    pygame.font.init()
     screen = pygame.display.set_mode((Constants.BOARD_WIDTH, Constants.BOARD_HEIGHT))
     clock = pygame.time.Clock()
 
@@ -97,8 +134,7 @@ def main():
     screen = pygame.display.set_mode((gameBoard.surface.get_width(), gameBoard.surface.get_height()))
     screen.blit(gameBoard.surface, (0, 0))
 
-    running = True
-    while running:
+    while gameBoard.lives > 0:
         clock.tick(Constants.FRAME_RATE)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -112,11 +148,15 @@ def main():
 
         for color in gameBoard.ghosts:
             gameBoard.ghosts[color].update_direction(gameBoard)
-            gameBoard.ghosts[color].draw(screen)
+            gameBoard.ghosts[color].draw(screen,gameBoard)
         
 
-        gameBoard.deleteDot(gameBoard.player.gridx,gameBoard.player.gridy)
+        gameBoard.deleteDot()
+        if gameBoard.mood != "fright":
+            gameBoard.pacman_ghost_collison()
         gameBoard.update()
+
+        gameBoard.draw_score_and_life(screen)
         
         pygame.display.flip()
 
