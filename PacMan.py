@@ -1,6 +1,5 @@
 import pygame
 import Constants
-import heapq
 import math
 
 class Character:
@@ -27,6 +26,14 @@ class Character:
             and ((self.y + Constants.TILESIZE) < tile_bottom + 2)
         )
 
+    def would_collide(self, board, direction):
+        gridx = self.x // Constants.TILESIZE
+        gridy = self.y // Constants.TILESIZE
+        if self.fully_inside_square(gridx, gridy):
+            if board.boardGrid[gridx + self.current_direction[0]][gridy + self.current_direction[1]] not in (0, 3, 4):
+                return True
+        return False
+
     def update_position(self, board):
         gridx = self.x // Constants.TILESIZE
         gridy = self.y // Constants.TILESIZE
@@ -38,7 +45,7 @@ class Character:
             self.x += self.current_direction[0]
             self.y += self.current_direction[1]
 
-        elif board.boardGrid[gridx + self.current_direction[0]][gridy + self.current_direction[1]] in (0, 3, 4):
+        if board.boardGrid[gridx + self.current_direction[0]][gridy + self.current_direction[1]] in (0, 3, 4):
             self.x += self.current_direction[0]
             self.y += self.current_direction[1]
 
@@ -57,9 +64,8 @@ class Character:
         )
 
 class Pacman(Character):
-
     def __init__(self, x, y):
-        super().__init__(x, y, (255, 51, 0))
+        super().__init__(x, y, (255, 255, 0))
 
     def update(self, board):
         keys = pygame.key.get_pressed()
@@ -75,13 +81,18 @@ class Pacman(Character):
 
 class Ghost(Character):
 
-    def __init__(self, x, y):
-        super().__init__(x, y, (255, 0, 0))
+    def __init__(self, x, y,color, timer, ghost_number):
+        super().__init__(x, y, color)
         self.spacesAllowed = (0,3,4,6,5,7,8)
-        self.made_decision = False
+        self.state = "ghost_house"
+        self.mood = "chase"
+        self.ghost_number = ghost_number
+        self.state_info = {"timer":timer*Constants.FRAME_RATE}# for when sending them to ghost house
+        self.startx = x
+        self.starty = y
 
-    def heuristic(self, current_position, target_position):
-        return abs(current_position[0] - target_position[0]) + abs(current_position[1] - target_position[1])
+    def modeChanger(self):
+        self.mood = "scatter"
     
     def get_neighbors(self, node, board):
         neighbors = []
@@ -98,40 +109,134 @@ class Ghost(Character):
     def update_direction(self, board):
         player_position = (board.player.gridx, board.player.gridy)
         ghost_position = (self.gridx, self.gridy)
-        self.state = 0 #Move this later 
-        if self.state == 0: #Chase
-            #   V check if we're at an intersection                       V Check if we already decided on a direction on this tile
-            if len(self.get_neighbors(ghost_position, board)) > 2 and not self.made_decision:
-                previous_tile = (ghost_position[0]-self.current_direction[0], ghost_position[1]-self.current_direction[1])
-                d = -math.inf
-                tile = None
-                for neighbor in self.get_neighbors(ghost_position, board):
-                    if neighbor == previous_tile:
-                        #Ghosts won't go backwards
-                        continue
-                    if math.dist(neighbor, player_position) > d:
-                        d = math.dist(neighbor, player_position)
-                        tile = neighbor
-                assert tile is not None
-                
-                self.current_direction = [ ghost_position[0]-neighbor[0], ghost_position[1]-neighbor[1] ]
-                self.made_decision = True
-            else:
-                if board.boardGrid[ghost_position[0]+self.current_direction[0]][ghost_position[1]+self.current_direction[1]] in self.spacesAllowed:
-                    #We're moving in a straight line, we can reset our decision making
-                    self.made_decision = False
-                elif not self.made_decision:
-                    previous_tile = (ghost_position[0]-self.current_direction[0], ghost_position[1]-self.current_direction[1])
-                    for neighbor in self.get_neighbors(ghost_position, board):
-                        if neighbor != previous_tile:
-                            self.current_direction = [ ghost_position[0]-neighbor[0], ghost_position[1]-neighbor[1] ]
-                    self.made_decision = True
-        
-        elif self.state == 1: #Scatter
-            pass
-        else: #Frightened
-            pass
+        mood = board.mood
+        #if self.state != "move":
+            #print(self.state, self.state_info, self.current_direction, ghost_position)
+        if self.state == "intersection":
+            #pick a direction
+            #print("Targetting", player_position)
+            #print("Options", self.get_neighbors(ghost_position, board))
+            previous_tile = (ghost_position[0]-self.current_direction[0], ghost_position[1]-self.current_direction[1])
+            #print("Previous Tile", previous_tile)
+            d = math.inf
+            tile = None
+            #decision of where to go based on state
+            targetSpot = 0
 
+            if mood == "chase":
+                if(self.ghost_number == Constants.RED):
+                    #Red guns straight for the player
+                    targetSpot = (board.player.gridx,board.player.gridy)
+                elif (self.ghost_number == Constants.PINK):
+                    #Pink targets four spaces ahead of the player
+                    targetSpot = (board.player.gridx + (board.player.current_direction[0]*4), board.player.gridy + (board.player.current_direction[1]*4))
+                elif (self.ghost_number == Constants.BLUE):
+                    """
+                    https://gameinternals.com/understanding-pac-man-ghost-behavior
+                    Inky actually uses both Pac-Man's 
+                    position/facing as well as Blinky's (the red ghost's) position in his calculation. 
+                    To locate Inky's target, we first start by selecting the position two tiles in front 
+                    of Pac-Man in his current direction of travel, similar to Pinky's targeting method. 
+                    """
+                    positionA = targetSpot = (board.player.gridx + (board.player.current_direction[0]*2), board.player.gridy + (board.player.current_direction[1]*2))
+                    """
+                    From there, imagine drawing a vector from Blinky's position to this tile, and then doubling 
+                    the length of the vector. The tile that this new, extended vector ends on will be 
+                    Inky's actual target.
+                    """
+                    blinky_position = (board.ghosts[Constants.RED].gridx, board.ghosts[Constants.RED].gridy)
+                    targetSpot = ((positionA[0] - blinky_position[0])*2, (positionA[1]-blinky_position[1])*2)
+                    
+                elif (self.ghost_number == Constants.YELLOW):
+                    """
+                    Whenever Clyde needs to determine his target tile, he first calculates his distance from Pac-Man.
+                    If he is farther than eight tiles away, his targeting is identical to Blinky's, using Pac-Man's
+                    current tile as his target. However, as soon as his distance to Pac-Man becomes less than eight tiles,
+                    Clyde's target is set to the same tile as his fixed one in Scatter mode, just outside the
+                    bottom-left corner of the maze.
+                    """
+                    if math.dist(ghost_position, player_position) > 8:
+                        #blinky mode
+                        targetSpot = player_position
+                    else:
+                        targetSpot = Constants.YELLOW_TARGET
+
+            elif mood == "scatter":
+                if(self.ghost_number == Constants.RED):
+                    targetSpot = Constants.RED_TARGET
+                elif(self.ghost_number == Constants.PINK):
+                    targetSpot = Constants.PINK_TARGET
+                elif(self.ghost_number == Constants.BLUE):
+                    targetSpot = Constants.BLUE_TARGET
+                elif(self.ghost_number == Constants.YELLOW):
+                    targetSpot = Constants.YELLOW_TARGET
+            elif mood == "fright":
+                targetSpot = player_position
+                d = -math.inf
+
+
+
+            for neighbor in self.get_neighbors(ghost_position, board):
+                if mood == "fright":
+                    #Choose the farthest tile
+                    if math.dist(neighbor, targetSpot) > d:
+                        d = math.dist(neighbor, targetSpot)
+                        tile = neighbor
+                else:
+                    if neighbor == previous_tile:
+                        #print("Skipping", neighbor)
+                        continue
+                    #Choose the closest tile chase logic for red
+                    if math.dist(neighbor, targetSpot) < d:
+                        d = math.dist(neighbor, targetSpot)
+                        tile = neighbor
+
+            assert tile is not None
+            
+            #print("moving towards", tile)
+            self.current_direction = [tile[0] - ghost_position[0], tile[1] - ghost_position[1]]
+            self.state = "move"
+            self.state_info = {"started":ghost_position}
+            
+        elif self.state == "ghost_house":
+            self.x = self.startx
+            self.y = self.starty
+            if self.state_info["timer"] <= 0:
+                #self.x = 10 * Constants.TILESIZE
+                #self.y = 8 * Constants.TILESIZE
+                self.state = "intersection"
+                self.state_info = {}
+            else:
+                self.state_info["timer"] -= 1
+
+        elif self.state == "move":
+            if self.fully_inside_square(self.gridx, self.gridy) and len(self.get_neighbors(ghost_position, board)) > 2 and ghost_position != self.state_info["started"]:
+                self.state = "intersection"
+                self.state_info = {}
+            elif not self.would_collide(board, self.current_direction):
+                #print("free to move")
+                self.x += self.current_direction[0]
+                self.y += self.current_direction[1]
+                self.gridx = self.x // Constants.TILESIZE
+                self.gridy = self.y // Constants.TILESIZE
+            else:
+                
+                previous_tile = (ghost_position[0]-self.current_direction[0], ghost_position[1]-self.current_direction[1])
+                #print("need to turn but not to", previous_tile)
+                for neighbor in self.get_neighbors(ghost_position, board):
+                    if neighbor != previous_tile:
+                        print("turning to", neighbor)
+                        self.current_direction = [neighbor[0] - ghost_position[0], neighbor[1] - ghost_position[1]]
+                        self.x += self.current_direction[0]
+                        self.y += self.current_direction[1]
+                        self.gridx = self.x // Constants.TILESIZE
+                        self.gridy = self.y // Constants.TILESIZE
+                        break
+
+
+
+    def update(self, board):
+        self.update_direction(board)
         super().update_position(board)
 
    

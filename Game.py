@@ -5,12 +5,21 @@ import json
 import Items
 import Constants
 import PacMan
+
+#Reference guide
+#https://gameinternals.com/understanding-pac-man-ghost-behavior
+
+
 class Board:
 
     def __init__(self):
         self.colors = numpy.array([[0, 0, 0],[100, 100, 255],[255, 255, 255]])
         self.dots = {}
         self.ghosts = {}
+        self.mood = "scatter"
+        self.timer = 0
+        self.rounds = 0
+        self.frightTimer = 0
         #set dots as a dictionary with maps of (x,y), instance.dot so when pacman is over .del
         with open('PacManBoard.json', 'r') as file:
             array = json.load(file)
@@ -34,7 +43,13 @@ class Board:
                 elif cell == Constants.PACMAN:
                     self.player = PacMan.Pacman(x*Constants.TILESIZE,y*Constants.TILESIZE)
                 elif cell == Constants.RED:
-                    self.ghosts = PacMan.Ghost(x*Constants.TILESIZE,y*Constants.TILESIZE)
+                    self.ghosts[Constants.RED] = PacMan.Ghost(x*Constants.TILESIZE, y*Constants.TILESIZE,(255,0,0), 3, Constants.RED)
+                elif cell == Constants.PINK:
+                    self.ghosts[Constants.PINK] = PacMan.Ghost(x*Constants.TILESIZE, y*Constants.TILESIZE,(255,153,204), 9, Constants.PINK)
+                elif cell == Constants.BLUE:
+                    self.ghosts[Constants.BLUE] = PacMan.Ghost(x*Constants.TILESIZE, y*Constants.TILESIZE,(0,255,255), 15, Constants.BLUE)
+                elif cell == Constants.YELLOW:
+                    self.ghosts[Constants.YELLOW] = PacMan.Ghost(x*Constants.TILESIZE, y*Constants.TILESIZE,(255,255,0), 21, Constants.YELLOW)
 
     def drawBoard(self):
         pass
@@ -46,8 +61,31 @@ class Board:
     def deleteDot(self, x, y):
         dot_coord = (x, y)
         if dot_coord in self.dots:
+            if isinstance(self.dots[dot_coord], Items.BigDots):
+                self.mood = "fright"
             del self.dots[dot_coord]
 
+    def update(self):
+        if self.mood == "fright" and self.frightTimer < 10 * Constants.FRAME_RATE:
+            self.frightTimer += 1
+            
+        else:
+            self.mood = " "
+            self.timer += 1
+            self.frightTimer = 0
+            
+        if(self.mood != "fright" and self.rounds < 5):
+            if self.timer < 7 * Constants.FRAME_RATE:
+                self.mood = "chase"
+            elif self.timer < 27 * Constants.FRAME_RATE:
+                self.mood = "scatter"
+            else:
+                self.timer = 0
+                self.rounds += 1
+
+
+
+ 
 
 def main():
     pygame.init()
@@ -61,7 +99,7 @@ def main():
 
     running = True
     while running:
-        clock.tick(60)
+        clock.tick(Constants.FRAME_RATE)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -69,11 +107,16 @@ def main():
         screen.blit(gameBoard.surface, (0,0))
         gameBoard.drawDots(screen)
         gameBoard.player.update(gameBoard)
-        gameBoard.ghosts.update_direction(gameBoard)
+
         gameBoard.player.draw(screen)
-        gameBoard.ghosts.draw(screen)
+
+        for color in gameBoard.ghosts:
+            gameBoard.ghosts[color].update_direction(gameBoard)
+            gameBoard.ghosts[color].draw(screen)
+        
 
         gameBoard.deleteDot(gameBoard.player.gridx,gameBoard.player.gridy)
+        gameBoard.update()
         
         pygame.display.flip()
 
