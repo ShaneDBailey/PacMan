@@ -10,6 +10,7 @@ class Board:
     def __init__(self):
         self.colors = numpy.array([[0, 0, 0],[100, 100, 255],[255, 255, 255]])
         self.dots = {}
+        self.ghosts = {}
         #set dots as a dictionary with maps of (x,y), instance.dot so when pacman is over .del
         with open('PacManBoard.json', 'r') as file:
             array = json.load(file)
@@ -23,15 +24,18 @@ class Board:
         for x in range(len(self.boardGrid)):
             for y in range(len(self.boardGrid[0])):
                 cell = self.boardGrid[x][y]
-                if cell == 0:
+
+                if cell == Constants.DOTS:
                     self.dots[(x, y)] = Items.Dots(x, y)
-                elif cell == 1:
-                    self.surface.blit(square, (x*Constants.TILESIZE, y*Constants.TILESIZE))
-                elif cell == 3:
+                elif cell == Constants.BIGDOTS:
                     self.dots[(x, y)] = Items.BigDots(x, y)
-                elif cell == 4:
+                elif cell == Constants.WALLS:
+                    self.surface.blit(square, (x*Constants.TILESIZE, y*Constants.TILESIZE))
+                elif cell == Constants.PACMAN:
                     self.player = PacMan.Pacman(x*Constants.TILESIZE,y*Constants.TILESIZE)
-                
+                elif cell == Constants.RED:
+                    self.ghosts = PacMan.Ghost(x*Constants.TILESIZE,y*Constants.TILESIZE)
+
     def drawBoard(self):
         pass
     
@@ -65,12 +69,12 @@ def main():
         screen.blit(gameBoard.surface, (0,0))
         gameBoard.drawDots(screen)
         gameBoard.player.update(gameBoard)
+        gameBoard.ghosts.update_direction(gameBoard)
         gameBoard.player.draw(screen)
+        gameBoard.ghosts.draw(screen)
 
         gameBoard.deleteDot(gameBoard.player.gridx,gameBoard.player.gridy)
         
         pygame.display.flip()
-        
-
 
 main()
