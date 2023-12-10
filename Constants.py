@@ -1,3 +1,5 @@
+#Shane Bailey, Nick Ford
+#file to store constants, convention purposes
 BOARD_WIDTH=630
 BOARD_HEIGHT = 690
 BOARD_GRID_SIZEX = 21

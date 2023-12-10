@@ -1,3 +1,6 @@
+#Shane Bailey, Nick Ford
+
+
 # Main Game
 import pygame
 import numpy
@@ -9,6 +12,7 @@ import PacMan
 #Reference guide
 #https://gameinternals.com/understanding-pac-man-ghost-behavior
 
+# board will parse the json file for the board, and spawn the corresponding walls, item, ghosts and pacman
 
 class Board:
 
